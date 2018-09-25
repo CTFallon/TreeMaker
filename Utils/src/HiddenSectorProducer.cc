@@ -11,6 +11,7 @@
 #include "FWCore/Framework/interface/Event.h"
 #include "FWCore/Framework/interface/MakerMacros.h"
 #include "FWCore/ParameterSet/interface/ParameterSet.h"
+#include "TLorentzVector.h"
 // new includes
 #include "DataFormats/PatCandidates/interface/Jet.h"
 #include "DataFormats/Candidate/interface/Candidate.h"
@@ -53,6 +54,7 @@ HiddenSectorProducer::HiddenSectorProducer(const edm::ParameterSet& iConfig) :
 	produces<double>("DeltaPhi1");
 	produces<double>("DeltaPhi2");
 	produces<double>("DeltaPhiMin");
+	produces<std::vector<int>>("isISR");
 }
 
 double HiddenSectorProducer::TransverseMass(double px1, double py1, double m1, double px2, double py2, double m2) const{
@@ -64,6 +66,7 @@ double HiddenSectorProducer::TransverseMass(double px1, double py1, double m1, d
 
 void HiddenSectorProducer::produce(edm::StreamID, edm::Event& iEvent, const edm::EventSetup& iSetup) const
 {
+	
 	//get the collections
 	edm::Handle<edm::View<pat::Jet>> h_jets;
 	iEvent.getByToken(JetTok_, h_jets);
@@ -73,6 +76,8 @@ void HiddenSectorProducer::produce(edm::StreamID, edm::Event& iEvent, const edm:
 
 	edm::Handle<edm::View<reco::GenParticle>> h_parts;
 	iEvent.getByToken(GenTok_, h_parts);
+
+	auto jet_isISR_vec = std::make_unique<std::vector<int>>();
 
 	LorentzVector vpartsSum;
 	if(h_parts.isValid()){
@@ -103,7 +108,28 @@ void HiddenSectorProducer::produce(edm::StreamID, edm::Event& iEvent, const edm:
 		double MET = h_mets->at(0).pt(), METPhi = h_mets->at(0).phi();
 		MT = TransverseMass(vjj.Px(),vjj.Py(),vjj.M(),MET*std::cos(METPhi),MET*std::sin(METPhi),0);
 	}
-
+	
+	//determining jet ISR status
+	// proposal: If a Jet is aligned with a Particle that satisfies the following conditions, it is an ISR jet.
+	// Particle must be a) SM, b) have a status code of 43 or 44 (outgoing ISR), and c) have non-zero Pt
+	// Aligned, for now, is deltaR(jet, particle) < 0.8
+	double deltaRjp = 100.;
+	for(const auto& i_jet : *(h_jets.product())){
+		int isISR = 0;
+		double minDeltaR = 100.;
+		for(const auto& i_part : *(h_parts.product())){
+			if(std::abs(i_part.pdgId())>=4900000) continue; // skip non-SM particles
+			if(!(std::abs(i_part.status()==43 || std::abs(i_part.status()==44)))) continue; // skip non-outgoing ISR particles
+			if(i_part.pt() == 0) continue; //skip particles that are eta == inf
+			//find candidate protoJet particle that is most central wrt the jet
+			deltaRjp = deltaR(i_jet,i_part);
+			if(deltaRjp < minDeltaR) minDeltaR = deltaRjp;
+		if(minDeltaR < 0.8) isISR = 1;
+		}
+		jet_isISR_vec->push_back(isISR);
+	} 
+	
+	iEvent.put(std::move(jet_isISR_vec), "isISR");
 	auto pMJJ = std::make_unique<double>(MJJ);
 	iEvent.put(std::move(pMJJ),"MJJ");
 	auto pMmc = std::make_unique<double>(Mmc);

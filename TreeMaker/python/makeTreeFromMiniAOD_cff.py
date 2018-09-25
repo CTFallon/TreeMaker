@@ -839,6 +839,9 @@ def makeTreeFromMiniAOD(self,process):
             'HiddenSector:DeltaPhi2(DeltaPhi2_AK8)',
             'HiddenSector:DeltaPhiMin(DeltaPhiMin_AK8)',
         ])
+	self.VectorInt.extend([
+	    'HiddenSector:isISR(JetsAK8_isISR)'
+	])
 
     ## ----------------------------------------------------------------------------------------------
     ## ----------------------------------------------------------------------------------------------
